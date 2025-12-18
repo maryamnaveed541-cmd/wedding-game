@@ -1,33 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Wedding Escape: Sibling Dodge!</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wedding Escape: Mobile Edition</title>
     <style>
-        body { text-align: center; font-family: 'Segoe UI', Arial, sans-serif; background: #fce4ec; overflow: hidden; margin: 0; padding: 20px; }
-        canvas { background: #fff; border: 8px solid #f06292; border-radius: 20px; display: block; margin: 0 auto; cursor: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        h1 { color: #880e4f; margin: 10px 0; }
-        #status { color: #ad1457; font-weight: bold; margin-bottom: 10px; }
+        body { 
+            text-align: center; 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            background: #fce4ec; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; /* Prevents scrolling while playing */
+            touch-action: none; /* Prevents "pull-to-refresh" */
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { 
+            background: #fff; 
+            border: 4px solid #f06292; 
+            border-radius: 15px; 
+            display: block; 
+            max-width: 95%;
+            max-height: 80%;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        h1 { color: #880e4f; font-size: 1.2rem; margin: 5px 0; }
+        #status { color: #ad1457; font-size: 0.8rem; margin-bottom: 5px; }
     </style>
 </head>
 <body>
-    <h1>💍 Catch the Groom, Dodge the Siblings! 💍</h1>
-    <div id="status">Loading Wedding Party...</div>
-    <canvas id="gameCanvas" width="800" height="550"></canvas>
+    <div id="game-container">
+        <h1>💍 Sibling Dodge 💍</h1>
+        <div id="status">Loading...</div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
 
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
         const statusDiv = document.getElementById("status");
 
-        // --- IMAGE LOADING SYSTEM ---
+        // Set internal resolution for Portrait
+        const V_WIDTH = 400;
+        const V_HEIGHT = 600;
+        canvas.width = V_WIDTH;
+        canvas.height = V_HEIGHT;
+
         const images = {};
         const sources = {
-            bride: 'bride.jpg',
-            groom: 'groom.jpg',
-            s1: 'sibling1.jpg',
-            s2: 'sibling2.jpg',
-            s3: 'sibling3.jpg',
-            s4: 'sibling4.jpg'
+            bride: 'bride.jpg', groom: 'groom.jpg',
+            s1: 'sibling1.jpg', s2: 'sibling2.jpg', s3: 'sibling3.jpg', s4: 'sibling4.jpg'
         };
 
         let loadedCount = 0;
@@ -35,142 +63,102 @@
 
         for (let key in sources) {
             images[key] = new Image();
+            images[key].src = sources[key];
             images[key].onload = () => {
                 loadedCount++;
                 if (loadedCount === totalImages) {
-                    statusDiv.innerText = "All set! Move your mouse to play.";
-                    startGame();
+                    statusDiv.innerText = "Drag to move the Bride!";
+                    requestAnimationFrame(gameLoop);
                 }
             };
             images[key].onerror = () => {
-                statusDiv.innerText = "Error loading " + sources[key] + ". Check filenames!";
+                console.log("Failed: " + sources[key]);
+                loadedCount++;
+                images[key] = null; 
+                if (loadedCount === totalImages) requestAnimationFrame(gameLoop);
             };
-            images[key].src = sources[key];
         }
 
-        // --- GAME VARIABLES ---
-        let score = 0;
-        let lives = 3;
-        let gameOver = false;
-        const bride = { x: 360, y: 450, r: 45 };
-        const items = [];
+        let score = 0, lives = 3, gameOver = false, items = [];
+        const bride = { x: 160, y: 500, r: 35 };
         const siblingKeys = ['s1', 's2', 's3', 's4'];
 
-        function drawCircularImage(img, x, y, radius, borderColor) {
+        function drawEntity(img, x, y, radius, color) {
             ctx.save();
             ctx.beginPath();
             ctx.arc(x + radius, y + radius, radius, 0, Math.PI * 2);
-            ctx.closePath();
             ctx.clip();
-            ctx.drawImage(img, x, y, radius * 2, radius * 2);
+            if (img) ctx.drawImage(img, x, y, radius * 2, radius * 2);
+            else { ctx.fillStyle = color; ctx.fill(); }
             ctx.restore();
-            
-            if (borderColor) {
-                ctx.beginPath();
-                ctx.arc(x + radius, y + radius, radius, 0, Math.PI * 2);
-                ctx.strokeStyle = borderColor;
-                ctx.lineWidth = 5;
-                ctx.stroke();
-            }
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 4;
+            ctx.stroke();
         }
 
-        function update() {
-            if (gameOver) return;
-
-            // Spawn Logic
-            if (Math.random() < 0.04) {
-                const isGroom = Math.random() > 0.8; // 20% chance for Groom
-                const randomSiblingKey = siblingKeys[Math.floor(Math.random() * siblingKeys.length)];
-                
-                items.push({
-                    x: Math.random() * (canvas.width - 90),
-                    y: -100,
-                    r: 40,
-                    speed: 3 + Math.random() * 3 + (score / 150),
-                    type: isGroom ? "GOAL" : "DODGE",
-                    img: isGroom ? images.groom : images[randomSiblingKey]
-                });
-            }
-
-            // Movement and Collision
-            for (let i = items.length - 1; i >= 0; i--) {
-                const item = items[i];
-                item.y += item.speed;
-
-                // Physics-based distance check
-                const dx = (item.x + item.r) - (bride.x + bride.r);
-                const dy = (item.y + item.r) - (bride.y + bride.r);
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance < bride.r + item.r - 10) {
-                    if (item.type === "GOAL") {
-                        score += 10;
-                    } else {
-                        lives--;
-                        if (lives <= 0) gameOver = true;
-                    }
-                    items.splice(i, 1);
-                    continue;
+        function gameLoop() {
+            ctx.clearRect(0, 0, V_WIDTH, V_HEIGHT);
+            if (!gameOver) {
+                if (Math.random() < 0.04) {
+                    const isGroom = Math.random() > 0.8;
+                    const sk = siblingKeys[Math.floor(Math.random() * siblingKeys.length)];
+                    items.push({
+                        x: Math.random() * (V_WIDTH - 70), y: -80, r: 35,
+                        speed: 3 + Math.random() * 3 + (score/100),
+                        type: isGroom ? "GOAL" : "DODGE",
+                        img: isGroom ? images.groom : images[sk]
+                    });
                 }
-
-                if (item.y > canvas.height) items.splice(i, 1);
+                for (let i = items.length - 1; i >= 0; i--) {
+                    const it = items[i]; it.y += it.speed;
+                    const dx = (it.x + it.r) - (bride.x + bride.r);
+                    const dy = (it.y + it.r) - (bride.y + bride.r);
+                    if (Math.sqrt(dx*dx + dy*dy) < (bride.r + it.r) - 8) {
+                        if (it.type === "GOAL") score += 10;
+                        else { lives--; if (lives <= 0) gameOver = true; }
+                        items.splice(i, 1); continue;
+                    }
+                    if (it.y > V_HEIGHT) items.splice(i, 1);
+                }
             }
 
-            draw();
-            requestAnimationFrame(update);
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw Bride (Pink)
-            drawCircularImage(images.bride, bride.x, bride.y, bride.r, "#f06292");
-
-            // Draw Falling Items
-            items.forEach(item => {
-                const color = item.type === "DODGE" ? "#ff4444" : "#ffd700";
-                drawCircularImage(item.img, item.x, item.y, item.r, color);
-            });
-
-            // Draw HUD
-            ctx.fillStyle = "#880e4f";
-            ctx.font = "bold 26px Arial";
-            ctx.textAlign = "left";
-            ctx.fillText("Score: " + score, 20, 45);
-            ctx.textAlign = "right";
-            ctx.fillText("Lives: " + "❤️".repeat(lives), canvas.width - 20, 45);
+            drawEntity(images.bride, bride.x, bride.y, bride.r, "#f06292");
+            items.forEach(it => drawEntity(it.img, it.x, it.y, it.r, it.type === "DODGE" ? "#ff0000" : "#ffd700"));
+            
+            ctx.fillStyle = "#880e4f"; ctx.font = "bold 20px Arial"; ctx.textAlign = "left";
+            ctx.fillText(`Pts: ${score}`, 15, 30); ctx.textAlign = "right";
+            ctx.fillText(`Lives: ${"❤️".repeat(Math.max(0, lives))}`, V_WIDTH - 15, 30);
 
             if (gameOver) {
-                ctx.fillStyle = "rgba(136, 14, 79, 0.95)";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "white";
-                ctx.textAlign = "center";
-                ctx.font = "bold 50px Arial";
-                ctx.fillText("CAUGHT!", canvas.width/2, 240);
-                ctx.font = "24px Arial";
-                ctx.fillText("Final Score: " + score, canvas.width/2, 290);
-                ctx.fillText("Click anywhere to restart", canvas.width/2, 340);
+                ctx.fillStyle = "rgba(136, 14, 79, 0.9)"; ctx.fillRect(0,0,V_WIDTH,V_HEIGHT);
+                ctx.fillStyle = "white"; ctx.textAlign = "center"; ctx.font = "bold 30px Arial";
+                ctx.fillText("GAME OVER", V_WIDTH/2, V_HEIGHT/2 - 20);
+                ctx.font = "18px Arial"; ctx.fillText("Tap to Restart", V_WIDTH/2, V_HEIGHT/2 + 30);
             }
+            requestAnimationFrame(gameLoop);
         }
 
-        function startGame() {
-            update();
-        }
-
-        canvas.addEventListener("mousemove", (e) => {
+        // --- UNIFIED CONTROLS (MOUSE + TOUCH) ---
+        function handleInput(clientX) {
             const rect = canvas.getBoundingClientRect();
-            let targetX = e.clientX - rect.left - bride.r;
-            // Bound checking
-            if (targetX < 0) targetX = 0;
-            if (targetX > canvas.width - (bride.r * 2)) targetX = canvas.width - (bride.r * 2);
-            bride.x = targetX;
-        });
+            const scaleX = V_WIDTH / rect.width; // Map screen pixels to game pixels
+            let tx = (clientX - rect.left) * scaleX - bride.r;
+            bride.x = Math.max(0, Math.min(tx, V_WIDTH - bride.r * 2));
+        }
 
-        canvas.addEventListener("click", () => {
-            if (gameOver) {
-                score = 0; lives = 3; items.length = 0; gameOver = false;
-                update();
+        canvas.addEventListener("mousemove", (e) => { if (!gameOver) handleInput(e.clientX); });
+        canvas.addEventListener("touchmove", (e) => {
+            if (!gameOver) {
+                handleInput(e.touches[0].clientX);
+                e.preventDefault(); 
             }
+        }, { passive: false });
+
+        const restartAction = () => { if (gameOver) { score = 0; lives = 3; items = []; gameOver = false; } };
+        canvas.addEventListener("mousedown", restartAction);
+        canvas.addEventListener("touchstart", (e) => {
+            if (gameOver) restartAction();
+            else handleInput(e.touches[0].clientX);
         });
     </script>
 </body>
